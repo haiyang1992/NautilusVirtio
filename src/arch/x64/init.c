@@ -47,6 +47,7 @@
 
 #include <dev/apic.h>
 #include <dev/pci.h>
+#include <dev/virtio_pci.h>
 #include <dev/hpet.h>
 #include <dev/ioapic.h>
 #include <dev/timer.h>
@@ -228,6 +229,8 @@ init (unsigned long mbd,
     kbd_init(naut);
 
     pci_init(naut);
+
+    virtio_pci_init(naut);
 
     nk_sched_init();
 
