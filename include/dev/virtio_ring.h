@@ -81,7 +81,7 @@ struct virtq_desc {
 struct virtq_avail {
         le16 flags;
         le16 idx;
-        le16 ring[];
+        le16 ring[]; // size should be Queue Size field read from the device
         /* Only if VIRTIO_F_EVENT_IDX: le16 used_event; */
 } ;
 
@@ -96,7 +96,7 @@ struct virtq_used_elem {
 struct virtq_used {
         le16 flags;
         le16 idx;
-        struct virtq_used_elem ring[];
+        struct virtq_used_elem ring[]; // size is Queue Size
         /* Only if VIRTIO_F_EVENT_IDX: le16 avail_event; */
 } ;
 
@@ -125,4 +125,20 @@ static inline le16 *virtq_avail_event(struct virtq *vq)
         /* For backwards compat, avail event index is at *end* of used ring. */
         return (le16 *)&vq->used->ring[vq->num];
 }
+
+static inline void virtq_init(struct virtq *vq, unsigned int num, void *p, unsigned long align)
+{
+	vq->num = num;
+	vq->desc = p;
+	vq->avail = p + num*sizeof(struct virtq_desc);
+	vq->used = (void *)(((unsigned long)&vq->avail->ring[num] + align - 1) & ~(align - 1));
+}
+
+
+// see compute_size() in /src/dev/virtio_pci.c
+/*static inline unsigned virtq_size(unsigned int num, unsigned long align)
+{
+	return ((sizeof(struct virtq_desc)*num + sizeof(le16)*(2+num) + align - 1) & ~(align - 1)) + sizeof(le16)*3 + sizeof(struct virtq_used_elem)*num;
+}*/
+
 #endif /* VIRTQUEUE_H */
