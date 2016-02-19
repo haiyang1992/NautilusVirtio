@@ -325,6 +325,10 @@ int virtio_ring_init(struct virtio_pci_dev *dev)
     // note it's a 32 bit register, but the address is a page address
     // so it really represents a 44 bit address (32 bits * 4096)
     write_regl(dev,QUEUE_ADDR,(uint32_t)(((uint64_t)(dev->vring[i].aligned_data))/4096));
+	
+    // specify values in virtq
+    virtq_init(&dev->vring[i].vq, size, dev->vring[i].aligned_data, 4096);
+    INFO("Initialized Virtio vring with %d elements\n",size);
 
     dev->num_vrings++;
   }

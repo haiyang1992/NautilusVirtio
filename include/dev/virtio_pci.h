@@ -1,5 +1,6 @@
 #ifndef __VIRTIO_PCI
 #define __VIRTIO_PCI
+#include "dev/virtio_ring.h"
 
 #define MAX_VRINGS 4
 
@@ -21,8 +22,13 @@ enum virtio_pci_dev_type { VIRTIO_PCI_NET, VIRTIO_PCI_BLOCK, VIRTIO_PCI_OTHER };
 
 struct virtio_pci_vring {
   uint64_t size_bytes;
+
+  // data is in charge of memory allcation/deallocation of the vring
   uint8_t *data ;
+  // the start of the vring from our and the device's perspective
   uint8_t *aligned_data;
+
+  struct virtq vq;
 };
 
 struct virtio_pci_dev {
