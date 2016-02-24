@@ -1,6 +1,6 @@
 #ifndef __VIRTIO_PCI
 #define __VIRTIO_PCI
-#include "dev/virtio_ring.h"
+#include "virtio_ring.h"
 
 #define MAX_VRINGS 4
 
