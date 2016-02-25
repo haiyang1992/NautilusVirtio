@@ -332,6 +332,10 @@ int virtio_ring_init(struct virtio_pci_dev *dev)
     virtq_init(&dev->vring[i].vq, size, dev->vring[i].aligned_data, 4096);
     INFO("Initialized Virtio vring with %d elements\n",size);
 
+    for (uint16_t j=0;j<size-1;j++){
+       dev->vring[i].vq.desc[j].next = j + 1;       
+    }
+
     dev->num_vrings++;
   }
 
