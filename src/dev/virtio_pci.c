@@ -298,6 +298,8 @@ int virtio_ring_init(struct virtio_pci_dev *dev)
   // now let's figure out the ring sizes
   dev->num_vrings=0;
   for (i=0;i<MAX_VRINGS;i++) {
+    
+    // select the queue we are interested in
     write_regw(dev,QUEUE_SEL,i);
     size = read_regw(dev,QUEUE_SIZE);
     if (size==0) {
@@ -338,6 +340,26 @@ int virtio_ring_init(struct virtio_pci_dev *dev)
     return -1;
   }
     
+  return 0;
+}
+
+// free memory space of vrings
+int virtio_ring_deinit(struct virtio_pci_dev *dev)
+{
+  uint8_t num_vrings = dev->num_vrings;
+  uint8_t i;
+
+  for (i=0;i<num_vrings;i++){ 
+    write_regw(dev,QUEUE_SEL,i);
+    
+    // select and deactivate the queue
+    write_regl(dev,QUEUE_ADDR,0);
+
+    free(dev->vring[i].aligned_data);
+    INFO("Deallocated Virtio vring on device %s\n", dev->name);
+    dev->num_vrings--;
+  }
+  
   return 0;
 }
 
