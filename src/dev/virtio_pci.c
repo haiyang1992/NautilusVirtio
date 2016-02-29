@@ -2,6 +2,7 @@
 #include <dev/pci.h>
 #include <dev/virtio_pci.h>
 #include <dev/virtio_ring.h>
+#include <dev/virtio_block.h>
 
 #ifndef NAUT_CONFIG_DEBUG_VIRTIO_PCI
 #undef DEBUG_PRINT
@@ -529,8 +530,21 @@ static int virtio_block_init(struct virtio_pci_dev *dev)
 
   val = read_regl(dev,DEVICE_FEATURES);
   DEBUG("device features: 0x%0x\n",val);
-
-
+  
+  struct virtio_block_request blkrq;
+  blkrq.type = 1;
+  blkrq.data[0] ='a'; 
+  
+  int enqueue_status = virtio_enque_request(dev, 0, &blkrq, sizeof(struct virtio_block_request), 0);
+  if (enqueue_status){
+    DEBUG("Enqueue failed\n");
+  }
+  else{
+    write_regw(dev,QUEUE_NOTIFY, 0);
+    write_regw(dev,QUEUE_VEC, 0);
+    DEBUG("Enqueued block request\n");
+    DEBUG("idx field of used is now%d\n", dev->vring[0].vq.used->idx);
+  }
 
   return 0;
 }
