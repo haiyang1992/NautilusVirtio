@@ -358,9 +358,9 @@ int virtio_ring_init(struct virtio_pci_dev *dev)
 	
     
     //virtq_init(&dev->vring[i].vq, size, dev->vring[i].aligned_data, 4096);
-    //INFO("Initialized Virtio vring with %d elements\n",size);
+    INFO("Initialized Virtio vring with %d elements\n",size);
 
-    for (uint16_t j=0;j<qsz-1;j++){
+    for (uint16_t j=0;j<size-1;j++){
        dev->vring[i].vq.desc[j].next = j + 1;       
     }
 
@@ -372,127 +372,6 @@ int virtio_ring_init(struct virtio_pci_dev *dev)
     return -1;
   }
     
-  return 0;
-}
-
-// a descriptor with len 0 will denote
-// it is free
-// we return -1 if the allocation cannot occur
-static uint32_t allocate_descriptor(volatile struct virtq *vq)
-{
-  uint32_t i;
-
-  // this is hideous
-  for (i=0;i<vq->num;i++) { 
-    if (!vq->desc[i].len) { 
-      // set to nonzero sentinal value
-      vq->desc[i].len=0xdeadbeef;
-      DEBUG("Allocate descriptor %u\n",i);
-      return i;
-    }
-  }
-  return -1;
-}
-
-static void free_descriptor(volatile struct virtq *vq, uint32_t i)
-{
-  DEBUG("Free descriptor %u\n",i);
-  if (!vq->desc[i].len) { 
-    DEBUG("Warning: descriptor already appears freed\n");
-  }
-  vq->desc[i].len=0;
-}
-
-// Returns 0 if we are able to place the request
-// into a descriptor and queue it to the avail ring
-// returns nonzero if this fails
-static int virtio_enque_request(struct virtio_pci_dev *dev,
-				uint32_t ring, 
-				uint64_t addr, 
-				uint32_t len, 
-				uint16_t flags)
-{
-  volatile struct virtq *vq = &dev->vring[ring].vq;
-
-  uint32_t i;
-  
-  i = allocate_descriptor(vq);
-  if (i==-1) { 
-    return -1;
-  }
-  
-  vq->desc[i].addr=addr;
-  vq->desc[i].len=len;
-  vq->desc[i].flags=flags;
-  vq->desc[i].next=0;
-  
-  vq->avail->ring[vq->avail->idx % vq->num] = i;
-  __asm__ __volatile__ ("" : : : "memory"); // software memory barrier
-  __sync_synchronize(); // hardware memory barrier
-  vq->avail->idx++; // it is ok that this wraps around
-  __asm__ __volatile__ ("" : : : "memory"); // software memory barrier
-  __sync_synchronize(); // hardware memory barrier
-  
-  return 0;
-}
-
-// Processing outstanding responses
-// calling the callback function for each one.  
-// the arguments to the callback are the elements of 
-// the original corresponding request
-static int virtio_dequeue_responses(struct virtio_pci_dev *dev,
-				    uint32_t ring,
-				    int (*callback)(struct virtio_pci_dev *dev,
-						    uint32_t ring,
-						    uint64_t addr,
-						    uint32_t len,
-						    uint16_t flags))
-{
-  struct virtio_pci_vring *vring = &dev->vring[ring];
-  volatile struct virtq *vq = &vring->vq;
-  uint16_t avail_flags;
-
-  avail_flags = vq->avail->flags;
-
-  // disable interrupts
-  vq->avail->flags |= VIRTQ_AVAIL_F_NO_INTERRUPT;
-
-  while (1) { 
-
-    if (vring->last_seen_used != vq->used->idx ) {
-
-      __asm__ __volatile__ ("" : : : "memory"); // sw mem barrier
-      __sync_synchronize(); // hw mem barrier
-
-      // restore interrupt state to whatever it was previously
-      vq->avail->flags = avail_flags;
-
-      // check again
-      if (vring->last_seen_used != vq->used->idx) {
-	break;
-      }
-    } 
-    
-    struct virtq_used_elem *e = &(vq->used->ring[vring->last_seen_used % vq->num]);
-
-    if (e->len!=1) { 
-      DEBUG("Surprising len %u response\n", e->len);
-    }
-
-    
-    if (callback(dev,
-		 ring,
-		 vq->desc[e->id].addr,
-		 vq->desc[e->id].len,
-		 vq->desc[e->id].flags)) {
-      DEBUG("Surprising nonzero return from callback\n");
-    }
-
-    free_descriptor(vq,e->id);
-
-    vring->last_seen_used++;
-  }
-
   return 0;
 }
 
