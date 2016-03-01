@@ -33,6 +33,9 @@ static struct list_head dev_list;
 #define CONFIG_VEC      0x14   // 2 byte
 #define QUEUE_VEC       0x16   // 2 byte
 
+/* Vector used to disable MSI for queue*/
+#define VIRTIO_MSI_NO_VECTOR 0xfff
+
 inline static uint32_t read_regl(struct virtio_pci_dev *dev, uint32_t offset)
 {
   uint32_t result;
@@ -426,6 +429,7 @@ static int virtio_enque_request(struct virtio_pci_dev *dev,
   vq->desc[i].len=len;
   vq->desc[i].flags=flags;
   vq->desc[i].next=0;
+  vq->avail[i].flags = 0;
   
   vq->avail->ring[vq->avail->idx % vq->num] = i;
   __asm__ __volatile__ ("" : : : "memory"); // software memory barrier
@@ -534,18 +538,24 @@ static int virtio_block_init(struct virtio_pci_dev *dev)
   struct virtio_block_request blkrq;
   blkrq.type = 1;
   blkrq.data[0] ='a'; 
-  
+  //blkrq.priority = 0;
+  blkrq.sector = 0;
+  //blkrq.status = 0; 
+ 
   int enqueue_status = virtio_enque_request(dev, 0, &blkrq, sizeof(struct virtio_block_request), 0);
   if (enqueue_status){
     DEBUG("Enqueue failed\n");
   }
   else{
-    write_regw(dev,QUEUE_NOTIFY, 0);
     write_regw(dev,QUEUE_VEC, 0);
+    if( read_regw(dev, QUEUE_VEC) == VIRTIO_MSI_NO_VECTOR){
+      DEBUG("Writing Queue Vector failed");
+    }
+    write_regw(dev,QUEUE_NOTIFY, 0);
     DEBUG("Enqueued block request\n");
     DEBUG("idx field of used is now%d\n", dev->vring[0].vq.used->idx);
   }
-
+  
   return 0;
 }
 

@@ -6,7 +6,7 @@ struct virtio_block_request{
   uint32_t priority; //0:Low
   uint64_t sector;
   unsigned char data[255];
-  unsigned char status; // 0:OK 1:Error 2:Unsupported
+  uint8_t status; // 0:OK 1:Error 2:Unsupported
 };
 
 #endif
