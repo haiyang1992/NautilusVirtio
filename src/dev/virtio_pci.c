@@ -421,6 +421,7 @@ static int virtio_enque_request(struct virtio_pci_dev *dev,
   uint32_t i;
   
   i = allocate_descriptor(vq);
+  DEBUG("allocated descriptor %x\n", i);
   if (i==-1) { 
     return -1;
   }
@@ -429,6 +430,9 @@ static int virtio_enque_request(struct virtio_pci_dev *dev,
   vq->desc[i].len=len;
   vq->desc[i].flags=flags;
   vq->desc[i].next=0;
+  DEBUG("vq->desc[%d] = (addr %p, len %x, flags %x,next %x)\n", i, vq->desc[i].addr, vq->desc[i].len, vq->desc[i].flags, vq->desc[i].next);
+  DEBUG("before: vq->avail->idx = %x mod at %x , vq->num= %x\n", vq->avail->idx, vq->avail->idx % vq->num, vq->num);
+
   vq->avail[i].flags = 0;
   
   vq->avail->ring[vq->avail->idx % vq->num] = i;
@@ -437,6 +441,9 @@ static int virtio_enque_request(struct virtio_pci_dev *dev,
   vq->avail->idx++; // it is ok that this wraps around
   __asm__ __volatile__ ("" : : : "memory"); // software memory barrier
   __sync_synchronize(); // hardware memory barrier
+
+   
+  DEBUG("after: vq->avail->idx = %x mod at %x , vq->num= %x\n", vq->avail->idx, vq->avail->idx % vq->num, vq->num);
   
   return 0;
 }
@@ -525,6 +532,8 @@ static int virtio_block_init(struct virtio_pci_dev *dev)
 {
 
   uint32_t val;
+  
+  volatile struct virtq *vq = &dev->vring[0].vq;
 
   DEBUG("Block init of %s\n",dev->name);
 
@@ -534,26 +543,37 @@ static int virtio_block_init(struct virtio_pci_dev *dev)
 
   val = read_regl(dev,DEVICE_FEATURES);
   DEBUG("device features: 0x%0x\n",val);
+  write_regl(dev,GUEST_FEATURES, val);
+  write_regb(dev,DEVICE_STATUS,0b111); // driver is now active
   
   struct virtio_block_request blkrq;
+  memset(&blkrq, 0, sizeof(blkrq));
   blkrq.type = 1;
   blkrq.data[0] ='a'; 
   //blkrq.priority = 0;
   blkrq.sector = 0;
   //blkrq.status = 0; 
  
-  int enqueue_status = virtio_enque_request(dev, 0, &blkrq, sizeof(struct virtio_block_request), 0);
-  if (enqueue_status){
+  DEBUG("start idx field of used is now%d\n", vq->used->idx);
+  int enqueue_status = virtio_enque_request(dev, 0, (uint64_t)&blkrq, (uint32_t)sizeof(struct virtio_block_request), 0);
+
+   if (enqueue_status){
     DEBUG("Enqueue failed\n");
   }
   else{
-    write_regw(dev,QUEUE_VEC, 0);
+    /*write_regw(dev,QUEUE_VEC, 0);
     if( read_regw(dev, QUEUE_VEC) == VIRTIO_MSI_NO_VECTOR){
       DEBUG("Writing Queue Vector failed");
-    }
+    }*/
+    nk_dump_mem(vq->desc, 8192);
+    DEBUG("after enque  idx field of used is now%d\n", vq->used->idx);
     write_regw(dev,QUEUE_NOTIFY, 0);
     DEBUG("Enqueued block request\n");
-    DEBUG("idx field of used is now%d\n", dev->vring[0].vq.used->idx);
+    DEBUG("idx field of used is now%d\n", vq->used->idx);
+    udelay(1000000);
+    nk_dump_mem(vq->desc, 8192);
+   // while(vq->used->idx == 0);
+    DEBUG("idx is now %d\n", vq->used->idx);
   }
   
   return 0;
