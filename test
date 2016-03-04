@@ -1,0 +1,3 @@
+#! /bin/bash
+make isoimage
+qemu-system-x86_64 -smp 4 -m 2048 -serial stdio -cdrom nautilus.iso -drive file=disk.img,if=virtio

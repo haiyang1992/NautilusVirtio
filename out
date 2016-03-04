@@ -34,7 +34,7 @@ DEBUG: SMP: CPU 0 -- LAPIC ID 0x0 -- Features: fpu mce cx8 apic
 DEBUG: SMP: 	Enabled?=1
 DEBUG: SMP: 	BSP?=1
 DEBUG: SMP: 	Signature=0x663
-DEBUG: SMP: 	Freq=2593.589 MHz
+DEBUG: SMP: 	Freq=2595.809 MHz
 DEBUG: SMP: Bus entry
 DEBUG: SMP: 	Bus ID: 0x00
 DEBUG: SMP: 	Type: PCI   

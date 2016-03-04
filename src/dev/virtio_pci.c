@@ -364,9 +364,9 @@ int virtio_ring_init(struct virtio_pci_dev *dev)
     //virtq_init(&dev->vring[i].vq, size, dev->vring[i].aligned_data, 4096);
     //INFO("Initialized Virtio vring with %d elements\n",size);
 
-    for (uint16_t j=0;j<qsz-1;j++){
+/*    for (uint16_t j=0;j<qsz-1;j++){
        dev->vring[i].vq.desc[j].next = j + 1;       
-    }
+    }*/
 
     dev->num_vrings++;
   }
@@ -429,7 +429,8 @@ static int virtio_enque_request(struct virtio_pci_dev *dev,
   vq->desc[i].addr=addr;
   vq->desc[i].len=len;
   vq->desc[i].flags=flags;
-  vq->desc[i].next=0;
+  if (flags != 2) vq->desc[i].next=i+1;
+ 
   DEBUG("vq->desc[%d] = (addr %p, len %x, flags %x,next %x)\n", i, vq->desc[i].addr, vq->desc[i].len, vq->desc[i].flags, vq->desc[i].next);
   DEBUG("before: vq->avail->idx = %x mod at %x , vq->num= %x\n", vq->avail->idx, vq->avail->idx % vq->num, vq->num);
 
@@ -537,43 +538,67 @@ static int virtio_block_init(struct virtio_pci_dev *dev)
 
   DEBUG("Block init of %s\n",dev->name);
 
-  write_regb(dev,DEVICE_STATUS,0x0); // driver resets device
-  write_regb(dev,DEVICE_STATUS,0b1); // driver acknowledges device
-  write_regb(dev,DEVICE_STATUS,0b11); // driver can drive device
+ /* write_regb(dev,DEVICE_STATUS,0x0); // driver resets device
+  write_regb(dev,DEVICE_STATUS,0x01); // driver acknowledges device
+  write_regb(dev,DEVICE_STATUS,0x03); // driver can drive device*/
 
   val = read_regl(dev,DEVICE_FEATURES);
   DEBUG("device features: 0x%0x\n",val);
-  write_regl(dev,GUEST_FEATURES, val);
-  write_regb(dev,DEVICE_STATUS,0b111); // driver is now active
+  write_regl(dev,GUEST_FEATURES, 0x100);
+  val = read_regl(dev,GUEST_FEATURES);
+  DEBUG("guest features set to: 0x%0x\n", val);
+  write_regb(dev,DEVICE_STATUS,0x07); // driver is now active
   
   struct virtio_block_request blkrq;
   memset(&blkrq, 0, sizeof(blkrq));
   blkrq.type = 1;
-  blkrq.data[0] ='a'; 
-  //blkrq.priority = 0;
-  blkrq.sector = 0;
-  //blkrq.status = 0; 
+//  blkrq.data[0] ='a'; 
+  blkrq.priority = 1;
+  blkrq.sector = 1;
+  //blkrq.status = 0;
  
-  DEBUG("start idx field of used is now%d\n", vq->used->idx);
-  int enqueue_status = virtio_enque_request(dev, 0, (uint64_t)&blkrq, (uint32_t)sizeof(struct virtio_block_request), 0);
+  struct virtio_block_request blkrq2;
+  memset(&blkrq2, 0, sizeof(blkrq2));
+//  blkrq2.type = 1;
+  //blkrq.data[0] ='a'; 
+  //blkrq2.priority = 1;
+  //blkrq2.sector = 1;
+//  char d = 'd';
+  blkrq2.data[0] = 'd'; 
+  struct virtio_block_request blkrq4;
+  memset(&blkrq4, 0, sizeof(blkrq4));
+  blkrq4.data[0] = 'a'; 
 
+  struct virtio_block_request blkrq3;
+  memset(&blkrq3, 0, sizeof(blkrq3));
+//  blkrq3.type = ;
+  //blkrq.data[0] ='a'; 
+  //blkrq3.priority = 1;
+  //blkrq3.sector = 1;
+
+  DEBUG("start idx field of used is now%d\n", vq->used->idx);
+  int enqueue_status = virtio_enque_request(dev, 0, (uint64_t)&blkrq, (uint32_t)(sizeof(blkrq)), 1);
+  enqueue_status = virtio_enque_request(dev, 0, (uint64_t)&blkrq2, (uint32_t)sizeof(blkrq2), 1);
+  enqueue_status = virtio_enque_request(dev, 0, (uint64_t)&blkrq4, (uint32_t)sizeof(blkrq4), 1);
+  enqueue_status = virtio_enque_request(dev, 0, (uint64_t)&blkrq3, (uint32_t)sizeof(blkrq3), 2);
    if (enqueue_status){
     DEBUG("Enqueue failed\n");
   }
-  else{
+  else{ 
+    DEBUG("Enqueued block request\n");
     /*write_regw(dev,QUEUE_VEC, 0);
     if( read_regw(dev, QUEUE_VEC) == VIRTIO_MSI_NO_VECTOR){
       DEBUG("Writing Queue Vector failed");
     }*/
-    nk_dump_mem(vq->desc, 8192);
-    DEBUG("after enque  idx field of used is now%d\n", vq->used->idx);
+   // nk_dump_mem(vq->desc, 8192);
+    DEBUG("after enque idx field of used is now %d\n", vq->used->idx);
     write_regw(dev,QUEUE_NOTIFY, 0);
-    DEBUG("Enqueued block request\n");
-    DEBUG("idx field of used is now%d\n", vq->used->idx);
+    DEBUG("idx field of used is now %d\n", vq->used->idx);
     udelay(1000000);
-    nk_dump_mem(vq->desc, 8192);
-   // while(vq->used->idx == 0);
+    //nk_dump_mem(vq->desc, 8192);
+    //while(vq->used->idx == 0);
     DEBUG("idx is now %d\n", vq->used->idx);
+    DEBUG("end of block init\n");
   }
   
   return 0;
@@ -600,6 +625,10 @@ static int bringup_device(struct virtio_pci_dev *dev)
   DEBUG("Bringing up %s\n",dev->name);
   switch (dev->type) {
   case VIRTIO_PCI_BLOCK:
+  write_regb(dev,DEVICE_STATUS,0x0); // driver resets device
+  write_regb(dev,DEVICE_STATUS,0x01); // driver acknowledges device
+  write_regb(dev,DEVICE_STATUS,0x03); // driver can drive device
+
     if (virtio_ring_init(dev)) { 
       ERROR("Failed to bring up device %s\n", dev->name);
       return -1;
