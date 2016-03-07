@@ -14,9 +14,9 @@
 // leave at 0 for time being...
 #define ACCESS_VIA_MEM 0
 
-#define INFO(fmt, args...) printk("VIRTIO_PCI: " fmt, ##args)
+/*#define INFO(fmt, args...) printk("VIRTIO_PCI: " fmt, ##args)
 #define DEBUG(fmt, args...) DEBUG_PRINT("VIRTIO_PCI: DEBUG: " fmt, ##args)
-#define ERROR(fmt, args...) printk("VIRTIO_PCI: ERROR: " fmt, ##args)
+#define ERROR(fmt, args...) printk("VIRTIO_PCI: ERROR: " fmt, ##args)*/
 
 // list of virtio devices we are managing
 static struct list_head dev_list;
@@ -563,7 +563,7 @@ static int virtio_block_init(struct virtio_pci_dev *dev)
   blkrq[2].data[0] = 'a'; 
 
   DEBUG("start idx field of used is now%d\n", vq->used->idx);
-  int enqueue_status;
+/*  int enqueue_status;
   uint16_t i;
 
   for (i=0;i<(sizeof(blkrq)/sizeof(struct virtio_block_request));i++){
@@ -578,17 +578,21 @@ static int virtio_block_init(struct virtio_pci_dev *dev)
       ERROR("Enqueue of block number %d failed\n", i + 1);
     }
   }
-  DEBUG("Enqueued block request\n");
-  
+  DEBUG("Enqueued block request\n");*/
+  int enqueue_result = blockrq_enqueue(dev, blkrq, sizeof(blkrq)/sizeof(struct virtio_block_request));
+  if (enqueue_result == -1){
+    ERROR("block request enqueue error\n");
+  }
+ 
   /*write_regw(dev,QUEUE_VEC, 0);
   if( read_regw(dev, QUEUE_VEC) == VIRTIO_MSI_NO_VECTOR){
     DEBUG("Writing Queue Vector failed");
   }*/
   // nk_dump_mem(vq->desc, 8192);
   
-  DEBUG("after enque idx field of used is now %d\n", vq->used->idx);
+  DEBUG("after enque idx field of used is %d\n", vq->used->idx);
   write_regw(dev,QUEUE_NOTIFY, 0);
-  DEBUG("idx field of used is now %d\n", vq->used->idx);
+  DEBUG("after notifying the device, idx field of used is %d\n", vq->used->idx);
   udelay(1000000);
   //nk_dump_mem(vq->desc, 8192);
   //while(vq->used->idx == 0);

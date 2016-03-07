@@ -4,6 +4,10 @@
 
 #define MAX_VRINGS 4
 
+#define INFO(fmt, args...) printk("VIRTIO_PCI: " fmt, ##args)
+#define DEBUG(fmt, args...) DEBUG_PRINT("VIRTIO_PCI: DEBUG: " fmt, ##args)
+#define ERROR(fmt, args...) printk("VIRTIO_PCI: ERROR: " fmt, ##args)
+
 enum virtio_pci_dev_type { VIRTIO_PCI_NET, VIRTIO_PCI_BLOCK, VIRTIO_PCI_OTHER };
 
 /*struct vring {
@@ -63,6 +67,11 @@ struct virtio_pci_dev {
 
 int virtio_pci_init(struct naut_info * naut);
 int virtio_pci_deinit();
-
+static int virtio_enque_request(struct virtio_pci_dev *dev,
+				uint32_t ring, 
+				uint64_t addr, 
+				uint32_t len, 
+				uint16_t flags,
+                                uint8_t head);
 
 #endif

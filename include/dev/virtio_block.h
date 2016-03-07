@@ -1,5 +1,7 @@
 #ifndef __VIRTIO_BLOCK
 #define __VIRTIO_BLOCK
+#include <dev/virtio_pci.h>
+
 
 /* Feature bits */
 #define VIRTIO_BLK_F_BARRIER    0	/* Device supports request barriers */ 
@@ -32,6 +34,27 @@ struct virtio_block_request{
   /* request unsupported by device */
   #define VIRTIO_BLK_S_UNSUPP	2
   uint8_t status;
+};
+
+static int blockrq_enqueue(struct virtio_pci_dev *dev, struct virtio_block_request blkrq[], uint8_t size){  
+  int enqueue_status;
+  uint16_t i;
+
+  for (i=0;i<size;i++){
+    uint8_t head = 0;
+    uint16_t flags = 1;
+    if (i == 0) 
+      head = 1;
+    if (i == size - 1) 
+      flags = 2;
+    enqueue_status = virtio_enque_request(dev, 0, (uint64_t)&blkrq[i], (uint32_t)(sizeof(blkrq[i])), flags, head);
+    if (enqueue_status){
+      ERROR("Enqueue of block number %d failed\n", i + 1);
+      return -1;
+    }
+  }
+  DEBUG("Enqueued block request\n");
+  return 0;
 };
 
 #endif
