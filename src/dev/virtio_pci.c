@@ -3,6 +3,7 @@
 #include <dev/virtio_pci.h>
 #include <dev/virtio_ring.h>
 #include <dev/virtio_block.h>
+#include <nautilus/irq.h>
 
 #ifndef NAUT_CONFIG_DEBUG_VIRTIO_PCI
 #undef DEBUG_PRINT
@@ -14,9 +15,15 @@
 // leave at 0 for time being...
 #define ACCESS_VIA_MEM 0
 
-/*#define INFO(fmt, args...) printk("VIRTIO_PCI: " fmt, ##args)
+#ifndef INFO
+#define INFO(fmt, args...) printk("VIRTIO_PCI: " fmt, ##args)
+#endif
+#ifndef DEBUG
 #define DEBUG(fmt, args...) DEBUG_PRINT("VIRTIO_PCI: DEBUG: " fmt, ##args)
-#define ERROR(fmt, args...) printk("VIRTIO_PCI: ERROR: " fmt, ##args)*/
+#endif
+#ifndef ERROR
+#define ERROR(fmt, args...) printk("VIRTIO_PCI: ERROR: " fmt, ##args)
+#endif
 
 // list of virtio devices we are managing
 static struct list_head dev_list;
@@ -410,7 +417,7 @@ static void free_descriptor(volatile struct virtq *vq, uint32_t i)
 // Returns 0 if we are able to place the request
 // into a descriptor and queue it to the avail ring
 // returns nonzero if this fails
-static int virtio_enque_request(struct virtio_pci_dev *dev,
+int virtio_enque_request(struct virtio_pci_dev *dev,
 				uint32_t ring, 
 				uint64_t addr, 
 				uint32_t len, 

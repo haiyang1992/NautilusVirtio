@@ -1,7 +1,7 @@
 #ifndef __VIRTIO_BLOCK
 #define __VIRTIO_BLOCK
 #include <dev/virtio_pci.h>
-
+#include <nautilus/list.h>
 
 /* Feature bits */
 #define VIRTIO_BLK_F_BARRIER    0	/* Device supports request barriers */ 
@@ -36,25 +36,39 @@ struct virtio_block_request{
   uint8_t status;
 };
 
-static int blockrq_enqueue(struct virtio_pci_dev *dev, struct virtio_block_request blkrq[], uint8_t size){  
-  int enqueue_status;
-  uint16_t i;
+// this is the abstract base class for block devices
+// it's  all the functions that a specific block device
+// presents
+struct block_dev_int {
+    // these are function pointers
+    uint64_t (*get_block_size)(void *state);
+    uint64_t (*get_num_blocks)(void *state);
+    int (*read_block)(void *state, uint64_t blocknum, uint8_t *dest);
+    int (*write_block)(void *state, uint64_t blocknum, uint8_t *src);
 
-  for (i=0;i<size;i++){
-    uint8_t head = 0;
-    uint16_t flags = 1;
-    if (i == 0) 
-      head = 1;
-    if (i == size - 1) 
-      flags = 2;
-    enqueue_status = virtio_enque_request(dev, 0, (uint64_t)&blkrq[i], (uint32_t)(sizeof(blkrq[i])), flags, head);
-    if (enqueue_status){
-      ERROR("Enqueue of block number %d failed\n", i + 1);
-      return -1;
-    }
-  }
-  DEBUG("Enqueued block request\n");
-  return 0;
 };
+
+// this contains the data part of a block device as far as the 
+// block device layer knows about it. 
+struct block_dev {
+   // has some name
+   char name[32];
+   // will be in a list of all block devices in the system
+   struct hlist_node block_dev_list_node;
+   // a pointer to state supplied by the driver
+   void *state;
+   // the actual driver's interface functions
+   struct block_dev_int interface;
+};
+
+int write_block(void*, uint64_t, uint8_t*);
+
+int read_block(void*, uint64_t, uint8_t*);
+
+int blockrq_enqueue(struct virtio_pci_dev*, struct virtio_block_request*, uint8_t);
+
+struct block_dev * block_dev_register(char*, struct block_dev_int*, void*);
+
+int block_dev_unregister(struct block_dev*);
 
 #endif

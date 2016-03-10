@@ -13,3 +13,5 @@ endif
 obj-$(NAUT_CONFIG_HPET) += hpet.o
 
 obj-$(NAUT_CONFIG_VIRTIO_PCI) += virtio_pci.o
+
+obj-$(NAUT_CONFIG_VIRTIO_PCI) += virtio_block.o

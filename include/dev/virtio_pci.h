@@ -67,7 +67,7 @@ struct virtio_pci_dev {
 
 int virtio_pci_init(struct naut_info * naut);
 int virtio_pci_deinit();
-static int virtio_enque_request(struct virtio_pci_dev *dev,
+int virtio_enque_request(struct virtio_pci_dev *dev,
 				uint32_t ring, 
 				uint64_t addr, 
 				uint32_t len, 
