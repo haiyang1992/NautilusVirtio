@@ -538,6 +538,13 @@ int virtio_ring_deinit(struct virtio_pci_dev *dev)
   return 0;
 }
 
+static int virtio_block_handler(struct virtio_pci_dev *dev)
+{
+  DEBUG("Entering block interrrupt handler\n");
+  DEBUG("Leaving block interrrupt handler\n");
+  return 0;
+}
+
 static int virtio_block_init(struct virtio_pci_dev *dev)
 {
 
@@ -558,6 +565,9 @@ static int virtio_block_init(struct virtio_pci_dev *dev)
   DEBUG("guest features set to: 0x%0x\n", val);
 
   write_regb(dev,DEVICE_STATUS, 0b1011);*/
+  
+  register_int_handler(228, virtio_block_handler, NULL);
+  
   write_regb(dev,DEVICE_STATUS, 0b1111); // driver is now active
   
   struct virtio_block_request blkrq[4];
