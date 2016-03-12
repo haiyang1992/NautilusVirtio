@@ -72,7 +72,8 @@ int virtio_enque_request(struct virtio_pci_dev *dev,
 				uint64_t addr, 
 				uint32_t len, 
 				uint16_t flags,
-                                uint8_t head);
+                                uint8_t head,
+                                uint8_t tail);
 int virtio_dequeue_responses(struct virtio_pci_dev *dev,
 				    uint32_t ring,
 				    int (*callback)(struct virtio_pci_dev *dev,

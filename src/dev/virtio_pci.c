@@ -405,14 +405,27 @@ static uint32_t allocate_descriptor(volatile struct virtq *vq)
   return -1;
 }
 
-static int free_descriptor(volatile struct virtq *vq, uint32_t i, uint32_t *total)
-{
-  DEBUG("Free descriptor %u\n",i);
-  if (!vq->desc[i].len) { 
-    DEBUG("Warning: descriptor already appears freed\n");
+static void read_request_process(volatile struct virtq *vq, uint32_t i, uint32_t head_id)
+{ 
+  /*if (i == head_id){
+    read_request_process(vq, vq->desc[i].next, head_id);
+  }*/
+    struct virtio_block_request* return_blkrq = (struct virtio_block_request*)vq->desc[i].addr;
+      INFO("Data is: %s\n", return_blkrq->data);
+  if(vq->desc[i].next == 0){
+    return;
   }
-  
-  vq->desc[i].len = 0; 
+  else{
+//    struct virtio_block_request* return_blkrq = (struct virtio_block_request*)vq->desc[i].addr;
+   // for (int i=0;i<sizeof(return_blkrq->data);i++){
+  //    INFO("Data is: %s\n", return_blkrq->data);
+    //}
+    read_request_process(vq, vq->desc[i].next, head_id);
+  }
+}
+
+static int check_status(volatile struct virtq *vq, uint32_t i)
+{ 
   if (vq->desc[i].next == 0){
     struct virtio_block_request* return_blkrq = (struct virtio_block_request*)vq->desc[i].addr;
     uint8_t return_status = return_blkrq->status;
@@ -423,22 +436,63 @@ static int free_descriptor(volatile struct virtq *vq, uint32_t i, uint32_t *tota
         break;
       case VIRTIO_BLK_S_IOERR:
         DEBUG("Block request encountered device or driver error\n");
-        break;
+        return -1;
       case VIRTIO_BLK_S_UNSUPP:
         DEBUG("Block request unsupported by device\n");
-        break;
+        return -1;
       default:
         DEBUG("Unknown status returned by device\n");
         return -1;
     }
+    return 0;
+  }
+  else{
+    return check_status(vq, vq->desc[i].next);
+  }
+}
+
+static int free_descriptor(volatile struct virtq *vq, uint32_t i, uint32_t *total)
+{
+  DEBUG("Freeing descriptor %u\n",i);
+  if (!vq->desc[i].len) { 
+    DEBUG("Warning: descriptor already appears freed\n");
+  }
+  
+  vq->desc[i].len = 0; 
+  if (vq->desc[i].next == 0){
     (*total)++;
     return 0;
   }
   else{
     (*total)++;
-    int status = free_descriptor(vq, vq->desc[i].next, total);
-    return status;
+    return free_descriptor(vq, vq->desc[i].next, total);
   }
+}
+
+static int process_descriptor(volatile struct virtq *vq, uint32_t head_id, uint32_t *total)
+{
+  int blkrq_status = check_status(vq, head_id);
+  if (blkrq_status){
+    DEBUG("bad block request result status, now freeing descriptors\n");
+    return free_descriptor(vq, head_id, total);
+  }
+
+  struct virtio_block_request* return_blkrq = (struct virtio_block_request*)vq->desc[head_id].addr;
+  uint32_t return_type = return_blkrq->type;
+  switch(return_type){
+    case 0:
+      DEBUG("Processing read request\n");
+      read_request_process(vq, head_id, head_id);
+      break;
+    case 1: 
+      DEBUG("Processing write request\n");
+      // actually there's nothing to process, proceed to freeing the descriptors
+      break;
+    default:
+      DEBUG("Flush request, currently not supporting, now freeing descriptors\n");
+  }
+  DEBUG("Freeing descriptors\n");
+  return free_descriptor(vq, head_id, total);
 }
 
 // Returns 0 if we are able to place the request
@@ -449,7 +503,8 @@ int virtio_enque_request(struct virtio_pci_dev *dev,
 				uint64_t addr, 
 				uint32_t len, 
 				uint16_t flags,
-                                uint8_t head)
+                                uint8_t head,
+                                uint8_t tail)
 {
   volatile struct virtq *vq = &dev->vring[ring].vq;
 
@@ -464,7 +519,8 @@ int virtio_enque_request(struct virtio_pci_dev *dev,
   vq->desc[i].addr=addr;
   vq->desc[i].len=len;
   vq->desc[i].flags=flags;
-  if (flags != 2) vq->desc[i].next=i+1;
+  //if (flags != 2 && flags!=0) vq->desc[i].next=i+1;
+  if (tail != 1) vq->desc[i].next=i+1;
  
   DEBUG("vq->desc[%d] = (addr %p, len %x, flags %x,next %x)\n", i, vq->desc[i].addr, vq->desc[i].len, vq->desc[i].flags, vq->desc[i].next);
   DEBUG("before: vq->avail->idx = %x mod at %x , vq->num= %x\n", vq->avail->idx, vq->avail->idx % vq->num, vq->num);
@@ -508,9 +564,12 @@ int virtio_dequeue_responses(struct virtio_pci_dev *dev,
 
   while (1) { 
 
-      DEBUG("last seen used = %d\n", vring->last_seen_used);
-      DEBUG("used idx = %d\n", vq->used->idx);
-    if (vring->last_seen_used >= vq->used->idx ) {
+    
+    struct virtq_used_elem *e = &(vq->used->ring[(vring->last_seen_used-1) % vq->num]);
+for (int i = 0;i<20;i++){DEBUG("last used element id: %d\n", vq->used->ring[i].id);}
+      //DEBUG("last seen used = %d\n", vring->last_seen_used);
+      //DEBUG("used idx = %d\n", vq->used->idx);
+    if (vring->last_seen_used > vq->used->idx ) {
       //vq->avail->flags = avail_flags;
 
       __asm__ __volatile__ ("" : : : "memory"); // sw mem barrier
@@ -520,18 +579,17 @@ int virtio_dequeue_responses(struct virtio_pci_dev *dev,
       vq->avail->flags = avail_flags;
 
       // check again
-      if (vring->last_seen_used >= vq->used->idx) {
-        DEBUG("here\n");
+      if (vring->last_seen_used > vq->used->idx) {
+        //DEBUG("here\n");
 	break;
       }
       vq->avail->flags |= VIRTQ_AVAIL_F_NO_INTERRUPT;
     } 
     
-    struct virtq_used_elem *e = &(vq->used->ring[vring->last_seen_used % vq->num]);
 
-    if (e->len!=1) { 
+    /*if (e->len!=1) { 
       DEBUG("Surprising len %x response\n", e->len);
-    }
+    }*/
 
    /*DEBUG("calling callback function\n"); 
     if (callback(dev,
@@ -542,8 +600,9 @@ int virtio_dequeue_responses(struct virtio_pci_dev *dev,
       DEBUG("Surprising nonzero return from callback\n");
     }*/
     uint32_t total = 0;
-    int free_result;
-    free_result = free_descriptor(vq, e->id, &total);
+    int process_result;
+    DEBUG("processing from desc[%d]\n", e->id);
+    process_result = process_descriptor(vq, e->id, &total);
 
     vring->last_seen_used += total;
       DEBUG("at end: last seen used = %d\n", vring->last_seen_used);
@@ -612,36 +671,33 @@ static int virtio_block_init(struct virtio_pci_dev *dev)
   
   write_regb(dev,DEVICE_STATUS, 0b1111); // driver is now active
   
-  struct virtio_block_request blkrq[4];
-  memset(&blkrq, 0, sizeof(blkrq));
-  blkrq[0].type = 1;
-  blkrq[0].priority = 1;
-  blkrq[0].sector = 1;
+  struct virtio_block_request writerq[4];
+  memset(&writerq, 0, sizeof(writerq));
+  writerq[0].type = 1;
+  writerq[0].priority = 1;
+  writerq[0].sector = 1;
  
-  blkrq[1].data[0] = 'd'; 
-  blkrq[2].data[0] = 'a'; 
+  writerq[1].data[0] = 'd'; 
+  writerq[1].data[1] = 'a'; 
+  writerq[2].data[0] = 't'; 
+  writerq[2].data[1] = 'a'; 
+  
+  writerq[3].status = 1;
 
   DEBUG("start idx field of used is now%d\n", vq->used->idx);
-/*  int enqueue_status;
-  uint16_t i;
+  int enqueue_result = blockrq_enqueue(dev, writerq, sizeof(writerq)/sizeof(struct virtio_block_request));
 
-  for (i=0;i<(sizeof(blkrq)/sizeof(struct virtio_block_request));i++){
-    uint8_t head = 0;
-    uint16_t flags = 1;
-    if (i == 0) 
-      head = 1;
-    if (i == (sizeof(blkrq)/sizeof(struct virtio_block_request)) - 1) 
-      flags = 2;
-    enqueue_status = virtio_enque_request(dev, 0, (uint64_t)&blkrq[i], (uint32_t)(sizeof(blkrq[i])), flags, head);
-    if (enqueue_status){
-      ERROR("Enqueue of block number %d failed\n", i + 1);
-    }
-  }
-  DEBUG("Enqueued block request\n");*/
-  int enqueue_result = blockrq_enqueue(dev, blkrq, sizeof(blkrq)/sizeof(struct virtio_block_request));
+/*  struct virtio_block_request writerq2[4];
+  memset(&writerq2, 0, sizeof(writerq2));
+  writerq2[0].type = 1;
+  writerq2[0].priority = 1;
+  writerq2[0].sector = 1;
+  writerq2[1].data[0] = 'y'; 
+  writerq2[2].data[0] = 'p'; 
+   enqueue_result = blockrq_enqueue(dev, writerq2, sizeof(writerq2)/sizeof(struct virtio_block_request));
   if (enqueue_result == -1){
     ERROR("block request enqueue error\n");
-  }
+  }*/
  
   /*write_regw(dev,QUEUE_VEC, 0);
   if( read_regw(dev, QUEUE_VEC) == VIRTIO_MSI_NO_VECTOR){
@@ -656,6 +712,19 @@ static int virtio_block_init(struct virtio_pci_dev *dev)
   //nk_dump_mem(vq->desc, 8192);
   //while(vq->used->idx == 0);
   DEBUG("idx is now %d\n", vq->used->idx);
+
+  struct virtio_block_request readrq[4];
+  memset(&readrq, 0, sizeof(readrq));
+  readrq[0].type = 0;
+  readrq[0].priority = 1;
+  readrq[0].sector = 1;
+
+  enqueue_result = blockrq_enqueue(dev, readrq, sizeof(readrq)/sizeof(struct virtio_block_request));
+  if (enqueue_result == -1){
+    ERROR("block request enqueue error\n");
+  }
+  write_regw(dev,QUEUE_NOTIFY, 0);
+  udelay(1000000);
   DEBUG("end of block init\n");
   
   return 0;
