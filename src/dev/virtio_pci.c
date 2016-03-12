@@ -405,13 +405,40 @@ static uint32_t allocate_descriptor(volatile struct virtq *vq)
   return -1;
 }
 
-static void free_descriptor(volatile struct virtq *vq, uint32_t i)
+static int free_descriptor(volatile struct virtq *vq, uint32_t i, uint32_t *total)
 {
   DEBUG("Free descriptor %u\n",i);
   if (!vq->desc[i].len) { 
     DEBUG("Warning: descriptor already appears freed\n");
   }
-  vq->desc[i].len=0;
+  
+  vq->desc[i].len = 0; 
+  if (vq->desc[i].next == 0){
+    struct virtio_block_request* return_blkrq = (struct virtio_block_request*)vq->desc[i].addr;
+    uint8_t return_status = return_blkrq->status;
+    DEBUG("Status bit of last request packet is %x\n", return_status);
+    switch(return_status){
+      case VIRTIO_BLK_S_OK:
+        DEBUG("Block request OK\n");
+        break;
+      case VIRTIO_BLK_S_IOERR:
+        DEBUG("Block request encountered device or driver error\n");
+        break;
+      case VIRTIO_BLK_S_UNSUPP:
+        DEBUG("Block request unsupported by device\n");
+        break;
+      default:
+        DEBUG("Unknown status returned by device\n");
+        return -1;
+    }
+    (*total)++;
+    return 0;
+  }
+  else{
+    (*total)++;
+    int status = free_descriptor(vq, vq->desc[i].next, total);
+    return status;
+  }
 }
 
 // Returns 0 if we are able to place the request
@@ -462,7 +489,7 @@ int virtio_enque_request(struct virtio_pci_dev *dev,
 // calling the callback function for each one.  
 // the arguments to the callback are the elements of 
 // the original corresponding request
-static int virtio_dequeue_responses(struct virtio_pci_dev *dev,
+int virtio_dequeue_responses(struct virtio_pci_dev *dev,
 				    uint32_t ring,
 				    int (*callback)(struct virtio_pci_dev *dev,
 						    uint32_t ring,
@@ -473,7 +500,7 @@ static int virtio_dequeue_responses(struct virtio_pci_dev *dev,
   struct virtio_pci_vring *vring = &dev->vring[ring];
   volatile struct virtq *vq = &vring->vq;
   uint16_t avail_flags;
-
+  
   avail_flags = vq->avail->flags;
 
   // disable interrupts
@@ -481,7 +508,10 @@ static int virtio_dequeue_responses(struct virtio_pci_dev *dev,
 
   while (1) { 
 
-    if (vring->last_seen_used != vq->used->idx ) {
+      DEBUG("last seen used = %d\n", vring->last_seen_used);
+      DEBUG("used idx = %d\n", vq->used->idx);
+    if (vring->last_seen_used >= vq->used->idx ) {
+      //vq->avail->flags = avail_flags;
 
       __asm__ __volatile__ ("" : : : "memory"); // sw mem barrier
       __sync_synchronize(); // hw mem barrier
@@ -490,29 +520,33 @@ static int virtio_dequeue_responses(struct virtio_pci_dev *dev,
       vq->avail->flags = avail_flags;
 
       // check again
-      if (vring->last_seen_used != vq->used->idx) {
+      if (vring->last_seen_used >= vq->used->idx) {
+        DEBUG("here\n");
 	break;
       }
+      vq->avail->flags |= VIRTQ_AVAIL_F_NO_INTERRUPT;
     } 
     
     struct virtq_used_elem *e = &(vq->used->ring[vring->last_seen_used % vq->num]);
 
     if (e->len!=1) { 
-      DEBUG("Surprising len %u response\n", e->len);
+      DEBUG("Surprising len %x response\n", e->len);
     }
 
-    
+   /*DEBUG("calling callback function\n"); 
     if (callback(dev,
 		 ring,
 		 vq->desc[e->id].addr,
 		 vq->desc[e->id].len,
 		 vq->desc[e->id].flags)) {
       DEBUG("Surprising nonzero return from callback\n");
-    }
+    }*/
+    uint32_t total = 0;
+    int free_result;
+    free_result = free_descriptor(vq, e->id, &total);
 
-    free_descriptor(vq,e->id);
-
-    vring->last_seen_used++;
+    vring->last_seen_used += total;
+      DEBUG("at end: last seen used = %d\n", vring->last_seen_used);
   }
 
   return 0;
@@ -538,9 +572,17 @@ int virtio_ring_deinit(struct virtio_pci_dev *dev)
   return 0;
 }
 
-static int virtio_block_handler(struct virtio_pci_dev *dev)
+static int virtio_block_handler()
 {
   DEBUG("Entering block interrrupt handler\n");
+  struct list_head *curdev;
+  struct virtio_pci_dev *dev;
+
+  list_for_each(curdev,&(dev_list)) { 
+    dev = list_entry(curdev,struct virtio_pci_dev,virtio_node);
+  }
+  // we assume our virtio-block device is the only one making the interrupt
+  blockrq_dequeue(dev);
   DEBUG("Leaving block interrrupt handler\n");
   return 0;
 }

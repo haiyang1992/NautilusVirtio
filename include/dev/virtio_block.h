@@ -67,6 +67,8 @@ int read_block(void*, uint64_t, uint8_t*);
 
 int blockrq_enqueue(struct virtio_pci_dev*, struct virtio_block_request*, uint8_t);
 
+int blockrq_dequeue(struct virtio_pci_dev*);
+
 struct block_dev * block_dev_register(char*, struct block_dev_int*, void*);
 
 int block_dev_unregister(struct block_dev*);
