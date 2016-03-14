@@ -61,6 +61,7 @@ int blockrq_enqueue(struct virtio_pci_dev *dev, struct virtio_block_request blkr
   uint16_t i;
 
   for (i=0;i<size;i++){
+      DEBUG("Enqueueing desc[%d]\n", i);
     uint8_t head = 0;
     uint8_t tail = 0;
     uint16_t flags = 1;
@@ -68,12 +69,17 @@ int blockrq_enqueue(struct virtio_pci_dev *dev, struct virtio_block_request blkr
     if (i == 0){ 
       head = 1;
       flags = 1;
+      enqueue_status = virtio_enque_request(dev, 0, (uint64_t)&(blkrq[i].type), 128, flags, head, tail);
     }
-    if (i == size - 1){
+    else if (i == size - 1){
       flags = 2;
       tail = 1;
+      enqueue_status = virtio_enque_request(dev, 0, (uint64_t)&(blkrq[i].status), 8, flags, head, tail);
     }
-    enqueue_status = virtio_enque_request(dev, 0, (uint64_t)&blkrq[i], (uint32_t)(sizeof(blkrq[i])), flags, head, tail);
+    else{
+      enqueue_status = virtio_enque_request(dev, 0, (uint64_t)&(blkrq[i].data), 512, flags, head, tail);
+    }
+    
     if (enqueue_status){
       ERROR("Enqueue of block number %d failed\n", i + 1);
       return -1;
