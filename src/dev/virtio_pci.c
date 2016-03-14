@@ -3,6 +3,7 @@
 #include <dev/virtio_pci.h>
 #include <dev/virtio_ring.h>
 #include <dev/virtio_block.h>
+#include <dev/apic.h>
 #include <nautilus/irq.h>
 
 #ifndef NAUT_CONFIG_DEBUG_VIRTIO_PCI
@@ -27,6 +28,8 @@
 
 // list of virtio devices we are managing
 static struct list_head dev_list;
+
+static struct apic_dev * apic;
 
 // common register offsets
 #define DEVICE_FEATURES 0x0    // 4 byte
@@ -405,22 +408,25 @@ static uint32_t allocate_descriptor(volatile struct virtq *vq)
   return -1;
 }
 
-static void read_request_process(volatile struct virtq *vq, uint32_t i, uint32_t head_id)
+static void read_request_process(volatile struct virtq *vq, uint32_t i, uint32_t head_id, uint32_t *total)
 { 
-  /*if (i == head_id){
-    read_request_process(vq, vq->desc[i].next, head_id);
-  }*/
-    struct virtio_block_request* return_blkrq = (struct virtio_block_request*)vq->desc[i].addr;
-      INFO("Data is: %s\n", return_blkrq->data);
-  if(vq->desc[i].next == 0){
+  if (i == head_id){
+    (*total)++;
+    read_request_process(vq, vq->desc[i].next, head_id, total);
+  }
+    /*struct virtio_block_request* return_blkrq = (struct virtio_block_request*)vq->desc[i].addr;
+      INFO("Data is: %s\n", return_blkrq->data);*/
+  else if(vq->desc[i].next == 0){
+    (*total)++;
     return;
   }
   else{
-//    struct virtio_block_request* return_blkrq = (struct virtio_block_request*)vq->desc[i].addr;
-   // for (int i=0;i<sizeof(return_blkrq->data);i++){
-  //    INFO("Data is: %s\n", return_blkrq->data);
+    struct virtio_block_request* return_blkrq = (struct virtio_block_request*)vq->desc[i].addr;
+    //for (int i=0;i<sizeof(return_blkrq->data);i++){
+      INFO("Data is: %s\n", return_blkrq->data);
     //}
-    read_request_process(vq, vq->desc[i].next, head_id);
+    (*total)++;
+    read_request_process(vq, vq->desc[i].next, head_id, total);
   }
 }
 
@@ -451,20 +457,22 @@ static int check_status(volatile struct virtq *vq, uint32_t i)
   }
 }
 
-static int free_descriptor(volatile struct virtq *vq, uint32_t i, uint32_t *total)
+static int free_descriptor(volatile struct virtq *vq, uint32_t i)
 {
   DEBUG("Freeing descriptor %u\n",i);
   if (!vq->desc[i].len) { 
     DEBUG("Warning: descriptor already appears freed\n");
+    return 0; 
   }
   
-  vq->desc[i].len = 0; 
   if (vq->desc[i].next == 0){
-    (*total)++;
+    vq->desc[i].len = 0; 
+//    (*total)++;
     return 0;
   }
   else{
-    (*total)++;
+    vq->desc[i].len = 0; 
+  //  (*total)++;
     return free_descriptor(vq, vq->desc[i].next, total);
   }
 }
@@ -478,21 +486,23 @@ static int process_descriptor(volatile struct virtq *vq, uint32_t head_id, uint3
   }
 
   struct virtio_block_request* return_blkrq = (struct virtio_block_request*)vq->desc[head_id].addr;
+  DEBUG("Buffer located at 0x%x\n", return_blkrq);
   uint32_t return_type = return_blkrq->type;
   switch(return_type){
     case 0:
       DEBUG("Processing read request\n");
-      read_request_process(vq, head_id, head_id);
+      read_request_process(vq, head_id, head_id, total);
       break;
     case 1: 
       DEBUG("Processing write request\n");
       // actually there's nothing to process, proceed to freeing the descriptors
+      (*total)+=4;
       break;
     default:
       DEBUG("Flush request, currently not supporting, now freeing descriptors\n");
   }
   DEBUG("Freeing descriptors\n");
-  return free_descriptor(vq, head_id, total);
+  return free_descriptor(vq, head_id);
 }
 
 // Returns 0 if we are able to place the request
@@ -565,11 +575,11 @@ int virtio_dequeue_responses(struct virtio_pci_dev *dev,
   while (1) { 
 
     
-    struct virtq_used_elem *e = &(vq->used->ring[(vring->last_seen_used-1) % vq->num]);
-for (int i = 0;i<20;i++){DEBUG("last used element id: %d\n", vq->used->ring[i].id);}
-      //DEBUG("last seen used = %d\n", vring->last_seen_used);
-      //DEBUG("used idx = %d\n", vq->used->idx);
-    if (vring->last_seen_used > vq->used->idx ) {
+for (int i = 0;i<20;i++){DEBUG("last used element used[%d] = %d\n", i, vq->used->ring[i].id);}
+    struct virtq_used_elem *e = &(vq->used->ring[(vring->last_seen_used) % vq->num]);
+      DEBUG("last seen used = %d\n", vring->last_seen_used);
+      DEBUG("used idx = %d\n", vq->used->idx);
+    if (vring->last_seen_used >= vq->used->idx ) {
       //vq->avail->flags = avail_flags;
 
       __asm__ __volatile__ ("" : : : "memory"); // sw mem barrier
@@ -579,7 +589,7 @@ for (int i = 0;i<20;i++){DEBUG("last used element id: %d\n", vq->used->ring[i].i
       vq->avail->flags = avail_flags;
 
       // check again
-      if (vring->last_seen_used > vq->used->idx) {
+      if (vring->last_seen_used >= vq->used->idx) {
         //DEBUG("here\n");
 	break;
       }
@@ -601,7 +611,7 @@ for (int i = 0;i<20;i++){DEBUG("last used element id: %d\n", vq->used->ring[i].i
     }*/
     uint32_t total = 0;
     int process_result;
-    DEBUG("processing from desc[%d]\n", e->id);
+    DEBUG("processing from desc[%d] at used[%d]\n", e->id, vring->last_seen_used);
     process_result = process_descriptor(vq, e->id, &total);
 
     vring->last_seen_used += total;
@@ -682,38 +692,31 @@ static int virtio_block_init(struct virtio_pci_dev *dev)
   writerq[2].data[0] = 't'; 
   writerq[2].data[1] = 'a'; 
   
-  writerq[3].status = 1;
+ // writerq[3].status = 1;
 
   DEBUG("start idx field of used is now%d\n", vq->used->idx);
   int enqueue_result = blockrq_enqueue(dev, writerq, sizeof(writerq)/sizeof(struct virtio_block_request));
 
-/*  struct virtio_block_request writerq2[4];
+  struct virtio_block_request writerq2[4];
   memset(&writerq2, 0, sizeof(writerq2));
   writerq2[0].type = 1;
   writerq2[0].priority = 1;
   writerq2[0].sector = 1;
   writerq2[1].data[0] = 'y'; 
   writerq2[2].data[0] = 'p'; 
-   enqueue_result = blockrq_enqueue(dev, writerq2, sizeof(writerq2)/sizeof(struct virtio_block_request));
-  if (enqueue_result == -1){
-    ERROR("block request enqueue error\n");
-  }*/
  
   /*write_regw(dev,QUEUE_VEC, 0);
   if( read_regw(dev, QUEUE_VEC) == VIRTIO_MSI_NO_VECTOR){
     DEBUG("Writing Queue Vector failed");
   }*/
-  // nk_dump_mem(vq->desc, 8192);
   
   DEBUG("after enque idx field of used is %d\n", vq->used->idx);
   write_regw(dev,QUEUE_NOTIFY, 0);
   DEBUG("after notifying the device, idx field of used is %d\n", vq->used->idx);
   udelay(1000000);
-  //nk_dump_mem(vq->desc, 8192);
-  //while(vq->used->idx == 0);
   DEBUG("idx is now %d\n", vq->used->idx);
 
-  struct virtio_block_request readrq[4];
+  struct virtio_block_request readrq[5];
   memset(&readrq, 0, sizeof(readrq));
   readrq[0].type = 0;
   readrq[0].priority = 1;
@@ -723,8 +726,20 @@ static int virtio_block_init(struct virtio_pci_dev *dev)
   if (enqueue_result == -1){
     ERROR("block request enqueue error\n");
   }
+  DEBUG("after enque idx field of used is %d\n", vq->used->idx);
   write_regw(dev,QUEUE_NOTIFY, 0);
   udelay(1000000);
+  DEBUG("after notifying the device, idx field of used is %d\n", vq->used->idx);
+   
+  enqueue_result = blockrq_enqueue(dev, writerq2, sizeof(writerq2)/sizeof(struct virtio_block_request));
+  if (enqueue_result == -1){
+    ERROR("block request enqueue error\n");
+  }
+  DEBUG("after enque idx field of used is %d\n", vq->used->idx);
+  write_regw(dev,QUEUE_NOTIFY, 0);
+  udelay(1000000);
+  DEBUG("after notifying the device, idx field of used is %d\n", vq->used->idx);
+  
   DEBUG("end of block init\n");
   
   return 0;
