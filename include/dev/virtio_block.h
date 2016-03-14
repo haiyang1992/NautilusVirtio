@@ -25,7 +25,7 @@ struct virtio_block_request{
   uint32_t type;
   uint32_t priority;
   uint64_t sector;
-  unsigned char data[255];
+  unsigned char data[512];
   
   /* success */
   #define VIRTIO_BLK_S_OK	0
@@ -34,7 +34,7 @@ struct virtio_block_request{
   /* request unsupported by device */
   #define VIRTIO_BLK_S_UNSUPP	2
   uint8_t status;
-};
+}__packed;
 
 // this is the abstract base class for block devices
 // it's  all the functions that a specific block device
