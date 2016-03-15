@@ -61,7 +61,6 @@ int blockrq_enqueue(struct virtio_pci_dev *dev, struct virtio_block_request blkr
   uint16_t i;
 
   for (i=0;i<size;i++){
-      DEBUG("Enqueueing desc[%d]\n", i);
     uint8_t head = 0;
     uint8_t tail = 0;
     uint16_t flags = 1;

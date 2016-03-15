@@ -410,6 +410,9 @@ static uint32_t allocate_descriptor(volatile struct virtq *vq)
 
 static void read_request_process(volatile struct virtq *vq, uint32_t i, uint32_t head_id, uint32_t *total)
 { 
+    unsigned char *char_addr = (unsigned char*)(vq->desc[i].addr);
+      INFO("Data is at: %x\n", (uint64_t)(vq->desc[i].addr));
+      INFO("Data is: %c\n", char_addr[0]);
   if (i == head_id){
     (*total)++;
     read_request_process(vq, vq->desc[i].next, head_id, total);
@@ -423,9 +426,9 @@ static void read_request_process(volatile struct virtq *vq, uint32_t i, uint32_t
   else{
 //    struct virti = (struct virtio_block_request*)vq->desc[i].addr;
     //for (int i=0;i<sizeof(return_blkrq->data);i++){
-    unsigned char *char_addr = (uint64_t)(vq->desc[i].addr);
+    /*unsigned char *char_addr = (uint64_t)(vq->desc[i].addr);
       INFO("Data is at: %x\n", (uint64_t)(vq->desc[i].addr));
-      INFO("Data is: %c\n", char_addr[0]);
+      INFO("Data is: %c\n", char_addr[0]);*/
     //}
     (*total)++;
     read_request_process(vq, vq->desc[i].next, head_id, total);
@@ -597,7 +600,7 @@ int virtio_dequeue_responses(struct virtio_pci_dev *dev,
   while (1) { 
 
     
-    for (int i = 0;i<20;i++){DEBUG("used[%d] = %d\n", i, vq->used->ring[i].id);}
+    for (int i = 0;i<20;i++){DEBUG("used[%d] = %d with length %x\n", i, vq->used->ring[i].id, vq->used->ring[i].len);}
 
     struct virtq_used_elem *e = &(vq->used->ring[(vring->last_seen_used) % vq->num]);
     DEBUG("last seen used = %d\n", vring->last_seen_used);
@@ -756,7 +759,10 @@ static int virtio_block_init(struct virtio_pci_dev *dev)
   readrq[0].type = 0;
   readrq[0].priority = 0;
   readrq[0].sector = 0;
-  readrq[3].status = 5;
+  //readrq[3].status = 5;
+  //readrq[2].status = 5;
+  readrq[1].status = 5;
+  readrq[0].status = 5;
 
   DEBUG("start idx field of used is now %d\n", vq->used->idx);
   enqueue_result = blockrq_enqueue(dev, readrq, sizeof(readrq)/sizeof(struct virtio_block_request));
