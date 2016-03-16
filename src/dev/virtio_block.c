@@ -21,28 +21,6 @@ int check_blkrq_status(struct virtio_pci_dev *dev,
 	               uint64_t addr,
 		       uint32_t len,
 		       uint16_t flags){
-//  struct virtio_pci_vring *vring = dev->vring[ring];
-  volatile struct virtq *vq = &(dev->vring[ring].vq);
-  DEBUG("next field of desc is %d\n", vq->desc->next);
-  if (vq->desc->next == 0){
-    uint8_t return_status = vq->desc->addr;
-    DEBUG("Status bit of last request packet is %d\n", return_status);
-    switch(return_status){
-      case VIRTIO_BLK_S_OK:
-        DEBUG("Block request OK\n");
-        break;
-      case VIRTIO_BLK_S_IOERR:
-        DEBUG("Block request encountered device or driver error\n");
-        break;
-      case VIRTIO_BLK_S_UNSUPP:
-        DEBUG("Block request unsupported by device\n");
-        break;
-      default:
-        DEBUG("Unknown status returned by device\n");
-        return -1;
-    }
-    DEBUG("addr of desc is 0x%x\n", return_status);
-  }
   return 0;
 }
 
@@ -69,14 +47,17 @@ int blockrq_enqueue(struct virtio_pci_dev *dev, struct virtio_block_request blkr
       head = 1;
       flags = 1;
       enqueue_status = virtio_enque_request(dev, 0, (uint64_t)&(blkrq[i].type), 128, flags, head, tail);
+      //nk_dump_mem((uint64_t)(&blkrq[i].type), 128);
     }
     else if (i == size - 1){
       flags = 2;
       tail = 1;
       enqueue_status = virtio_enque_request(dev, 0, (uint64_t)&(blkrq[i].status), 8, flags, head, tail);
+      //nk_dump_mem( (uint64_t)&(blkrq[i].status), 8);
     }
     else{
       enqueue_status = virtio_enque_request(dev, 0, (uint64_t)&(blkrq[i].data), 512, flags, head, tail);
+      //nk_dump_mem( (uint64_t)&(blkrq[i].data), 512);
     }
     
     if (enqueue_status){

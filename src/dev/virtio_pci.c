@@ -410,15 +410,14 @@ static uint32_t allocate_descriptor(volatile struct virtq *vq)
 
 static void read_request_process(volatile struct virtq *vq, uint32_t i, uint32_t head_id, uint32_t *total)
 { 
-    unsigned char *char_addr = (unsigned char*)(vq->desc[i].addr);
-      INFO("Data is at: %x\n", (uint64_t)(vq->desc[i].addr));
-      INFO("Data is: %c\n", char_addr[0]);
+  unsigned char *char_addr = (unsigned char*)(vq->desc[i].addr);
+  INFO("Data is at: %x\n", (uint64_t)(vq->desc[i].addr));
+  INFO("Data is: %s\n", *char_addr);
+  
   if (i == head_id){
     (*total)++;
     read_request_process(vq, vq->desc[i].next, head_id, total);
   }
-    /*struct virtio_block_request* return_blkrq = (struct virtio_block_request*)vq->desc[i].addr;
-      INFO("Data is: %s\n", return_blkrq->data);*/
   else if(vq->desc[i].next == 0){
     (*total)++;
     return;
@@ -431,10 +430,12 @@ static void read_request_process(volatile struct virtq *vq, uint32_t i, uint32_t
       INFO("Data is: %c\n", char_addr[0]);*/
     //}
     (*total)++;
+    //nk_dump_mem(char_addr, 512);
     read_request_process(vq, vq->desc[i].next, head_id, total);
   }
 }
 
+// doesn't do anything except counting the numbers of descriptors to free
 static void write_flush_request_process(volatile struct virtq *vq, uint32_t i, uint32_t head_id, uint32_t *total)
 { 
   if (i == head_id){
@@ -452,11 +453,14 @@ static void write_flush_request_process(volatile struct virtq *vq, uint32_t i, u
     write_flush_request_process(vq, vq->desc[i].next, head_id, total);
   }
 }
+
 static int check_status(volatile struct virtq *vq, uint32_t i)
 { 
   if (vq->desc[i].next == 0){
-    struct virtio_block_request* return_blkrq = (struct virtio_block_request*)vq->desc[i].addr;
-    uint8_t return_status = return_blkrq->status;
+    //struct virtio_block_request* return_blkrq = (struct virtio_block_request*)vq->desc[i].addr;
+    uint8_t return_status = *(uint8_t *)(vq->desc[i].addr);
+    //uint8_t return_status = return_blkrq->status;
+//    uint8_t return_status = *return_blkrq;
     DEBUG("Status bit of last request packet is %x\n", return_status);
     switch(return_status){
       case VIRTIO_BLK_S_OK:
@@ -477,7 +481,6 @@ static int check_status(volatile struct virtq *vq, uint32_t i)
   else{
     struct virtio_block_request* return_blkrq = (struct virtio_block_request*)vq->desc[i].addr;
     uint8_t return_status = return_blkrq->status;
-    DEBUG("Status bit of request packet %d is %x\n",i, return_status);
     return check_status(vq, vq->desc[i].next);
   }
 }
@@ -507,6 +510,7 @@ static int process_descriptor(volatile struct virtq *vq, uint32_t head_id, uint3
   int blkrq_status = check_status(vq, head_id);
   /*if (blkrq_status){
     DEBUG("bad block request result status, now freeing descriptors\n");
+    write_flush_request_process(vq, head_id, head_id, total); 
     return free_descriptor(vq, head_id, total);
   }*/
 
@@ -756,13 +760,16 @@ static int virtio_block_init(struct virtio_pci_dev *dev)
   
   struct virtio_block_request readrq[4];
   memset(&readrq, 0, sizeof(readrq));
+  memset(&(readrq[2].status), 0, sizeof(readrq[2].status));
   readrq[0].type = 0;
   readrq[0].priority = 0;
   readrq[0].sector = 0;
   //readrq[3].status = 5;
   //readrq[2].status = 5;
+/*  readrq[0].status = 5;
   readrq[1].status = 5;
-  readrq[0].status = 5;
+  readrq[2].status = 5;*/
+  //readrq[3].status = 5;
 
   DEBUG("start idx field of used is now %d\n", vq->used->idx);
   enqueue_result = blockrq_enqueue(dev, readrq, sizeof(readrq)/sizeof(struct virtio_block_request));

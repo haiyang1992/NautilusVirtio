@@ -34,7 +34,7 @@ struct virtio_block_request{
   /* request unsupported by device */
   #define VIRTIO_BLK_S_UNSUPP	2
   uint8_t status;
-}__packed;
+};
 
 // this is the abstract base class for block devices
 // it's  all the functions that a specific block device
