@@ -730,14 +730,14 @@ static int virtio_block_init(struct virtio_pci_dev *dev)
   udelay(1000000);
   DEBUG("after notifying the device, idx field of used is %d\n", vq->used->idx);*/
   
-  struct virtio_block_request readrq[3];
+  struct virtio_block_request readrq[2];
   memset(&readrq, 0, sizeof(readrq));
-  memset(&(readrq[2].status), 0, sizeof(readrq[2].status));
+  memset(&(readrq[1].status), 5, sizeof(readrq[2].status));
   readrq[0].type = 0;
   readrq[0].priority = 0;
   readrq[0].sector = 0;
   //readrq[3].status = 5;
-  memset(&readrq[1].data, 'a', sizeof(readrq[1].data));
+//  memset(&readrq[1].data, 'a', sizeof(readrq[1].data));
   //memset(&readrq[2].data, 'b', sizeof(readrq[2].data));
   //readrq[2].status = 5;
 /*  readrq[0].status = 5;
