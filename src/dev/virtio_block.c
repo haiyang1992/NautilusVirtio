@@ -7,7 +7,7 @@ int write_block(void *state, uint64_t blocknum, uint8_t *src){
  // write_rq = malloc(sizeof(virtio_block_request) * () + 1);
   write_rq = malloc(sizeof(struct virtio_block_request));
   write_rq[0].type = VIRTIO_BLK_T_OUT;
-  write_rq[0].priority = 1;
+  write_rq[0].priority = 0;
   //write_rq[0].blocknum = f(blocknum);
   // fit data from src into write_rq[1].data;
   // add final rq for status
@@ -16,19 +16,11 @@ int write_block(void *state, uint64_t blocknum, uint8_t *src){
   return 0;
 }
 
-int check_blkrq_status(struct virtio_pci_dev *dev,				  
-		       uint32_t ring,
-	               uint64_t addr,
-		       uint32_t len,
-		       uint16_t flags){
-  return 0;
-}
-
 int read_block(void *state, uint64_t blocknum, uint8_t *dest){
   // TODO
   struct virtio_block_request read_rq[2];
   read_rq[0].type = VIRTIO_BLK_T_IN;
-  read_rq[0].priority = 1;
+  read_rq[0].priority = 0;
   //read_rq[0].sector = ...;
   //blockrq_enqueue();
   return 0;
@@ -70,18 +62,12 @@ int blockrq_enqueue(struct virtio_pci_dev *dev, struct virtio_block_request blkr
 }
 
 int blockrq_dequeue(struct virtio_pci_dev *dev){
-  //struct virtio_block_request blkrq;
-  //memset(&blkrq, 0, sizeof(blkrq));
 
   uint32_t ring = 0;
-  //uint32_t len = sizeof(blkrq);
-  //uint16_t flags = 2; 
-  int (*call_back)(struct virtio_pci_dev*, uint32_t, uint64_t, uint32_t, uint16_t);
-  call_back = &check_blkrq_status;
  
   volatile struct virtq *vq = &(dev->vring[ring].vq);
   DEBUG("About to call dequeue response function\n"); 
-  if(virtio_dequeue_responses(dev, ring, call_back)){
+  if(virtio_dequeue_responses(dev, ring)){
      DEBUG("Dequeue response error\n");
      return -1;
   } 

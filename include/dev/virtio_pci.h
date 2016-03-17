@@ -10,20 +10,6 @@
 
 enum virtio_pci_dev_type { VIRTIO_PCI_NET, VIRTIO_PCI_BLOCK, VIRTIO_PCI_OTHER };
 
-/*struct vring {
-  // The actual descriptors (16 bytes each 
-  struct vring_desc desc[qsz];
-
-  // A ring of available descriptor heads with free-running index.
-  struct vring_avail avail;
-
-  // Padding to the next 4096 boundary.
-  char pad[];
-
-  // A ring of used descriptor heads with free-running index.
-  struct vring_used used;
-};*/
-
 struct virtio_pci_vring {
   uint64_t size_bytes;
   // pointer to unaligned address supplied by nautilus
@@ -75,10 +61,5 @@ int virtio_enque_request(struct virtio_pci_dev *dev,
                                 uint8_t head,
                                 uint8_t tail);
 int virtio_dequeue_responses(struct virtio_pci_dev *dev,
-				    uint32_t ring,
-				    int (*callback)(struct virtio_pci_dev *dev,
-						    uint32_t ring,
-						    uint64_t addr,
-						    uint32_t len,
-						    uint16_t flags));
+				    uint32_t ring);
 #endif

@@ -461,7 +461,7 @@ static int check_status(volatile struct virtq *vq, uint32_t i)
     uint8_t return_status = *(uint8_t *)(vq->desc[i].addr);
     //uint8_t return_status = return_blkrq->status;
 //    uint8_t return_status = *return_blkrq;
-    DEBUG("Status bit of last request packet is %x\n", return_status);
+    DEBUG("Status bit of last request packet is %d\n", return_status);
     switch(return_status){
       case VIRTIO_BLK_S_OK:
         DEBUG("Block request OK\n");
@@ -485,7 +485,7 @@ static int check_status(volatile struct virtq *vq, uint32_t i)
   }
 }
 
-static int free_descriptor(volatile struct virtq *vq, uint32_t i, uint32_t *total)
+static int free_descriptor(volatile struct virtq *vq, uint32_t i)
 {
   DEBUG("Freeing descriptor %u\n",i);
   if (!vq->desc[i].len) { 
@@ -495,13 +495,11 @@ static int free_descriptor(volatile struct virtq *vq, uint32_t i, uint32_t *tota
   
   if (vq->desc[i].next == 0){
     vq->desc[i].len = 0; 
-//    (*total)++;
     return 0;
   }
   else{
     vq->desc[i].len = 0; 
-  //  (*total)++;
-    return free_descriptor(vq, vq->desc[i].next, total);
+    return free_descriptor(vq, vq->desc[i].next);
   }
 }
 
@@ -531,7 +529,7 @@ static int process_descriptor(volatile struct virtq *vq, uint32_t head_id, uint3
       write_flush_request_process(vq, head_id, head_id, total);
   }
   DEBUG("Freeing descriptors\n");
-  return free_descriptor(vq, head_id, total);
+  return free_descriptor(vq, head_id);
 }
 
 // Returns 0 if we are able to place the request
@@ -581,16 +579,8 @@ int virtio_enque_request(struct virtio_pci_dev *dev,
 }
 
 // Processing outstanding responses
-// calling the callback function for each one.  
-// the arguments to the callback are the elements of 
-// the original corresponding request
 int virtio_dequeue_responses(struct virtio_pci_dev *dev,
-				    uint32_t ring,
-				    int (*callback)(struct virtio_pci_dev *dev,
-						    uint32_t ring,
-						    uint64_t addr,
-						    uint32_t len,
-						    uint16_t flags))
+				    uint32_t ring)
 {
   struct virtio_pci_vring *vring = &dev->vring[ring];
   volatile struct virtq *vq = &vring->vq;
@@ -632,14 +622,6 @@ int virtio_dequeue_responses(struct virtio_pci_dev *dev,
       DEBUG("Surprising len %x response\n", e->len);
     }*/
 
-   /*DEBUG("calling callback function\n"); 
-    if (callback(dev,
-		 ring,
-		 vq->desc[e->id].addr,
-		 vq->desc[e->id].len,
-		 vq->desc[e->id].flags)) {
-      DEBUG("Surprising nonzero return from callback\n");
-    }*/
     uint32_t total = 0;
     int process_result;
     DEBUG("processing from desc[%d] at used[%d] with length %x\n", e->id, vring->last_seen_used, e->len);
@@ -678,6 +660,7 @@ static int virtio_block_handler()
   struct list_head *curdev;
   struct virtio_pci_dev *dev;
 
+  // we assume our virtio-block device is the only one making the interrupt
   list_for_each(curdev,&(dev_list)) { 
     dev = list_entry(curdev,struct virtio_pci_dev,virtio_node);
   }
@@ -687,7 +670,6 @@ static int virtio_block_handler()
   DEBUG("Current ISR status is: %x\n", isr_status);
   isr_status = read_regb(dev, ISR_STATUS);
   DEBUG("Current ISR status is: %x\n", isr_status);
-  // we assume our virtio-block device is the only one making the interrupt
   blockrq_dequeue(dev);
   DEBUG("Leaving block interrrupt handler\n");
   return 0;
@@ -718,24 +700,24 @@ static int virtio_block_init(struct virtio_pci_dev *dev)
   
   write_regb(dev,DEVICE_STATUS, 0b1111); // driver is now active
   
-  struct virtio_block_request writerq[4];
+  struct virtio_block_request writerq[3];
   memset(&writerq, 0, sizeof(writerq));
   writerq[0].type = 1;
   writerq[0].priority = 0;
   writerq[0].sector = 0; 
   memset(&writerq[1].data, 0, 512);
-  memset(&writerq[2].data, 0xff, 512);
+  //memset(&writerq[2].data, 0xff, 512);
   writerq[1].data[0] = 'r'; 
   writerq[1].data[1] = 'a'; 
   writerq[1].data[2] = 'n'; 
   writerq[1].data[3] = 'd'; 
   writerq[1].data[4] = 'o'; 
   writerq[1].data[5] = 'm'; 
-  writerq[2].data[0] = 'd'; 
+  /*writerq[2].data[0] = 'd'; 
   writerq[2].data[1] = 'a'; 
   writerq[2].data[2] = 't'; 
-  writerq[2].data[3] = 'a';  
-  writerq[3].status = 5;
+  writerq[2].data[3] = 'a';  */
+  writerq[2].status = 5;
 
   DEBUG("start idx field of used is now %d\n", vq->used->idx);
   int enqueue_result = blockrq_enqueue(dev, writerq, sizeof(writerq)/sizeof(struct virtio_block_request));
@@ -764,7 +746,7 @@ static int virtio_block_init(struct virtio_pci_dev *dev)
   udelay(1000000);
   DEBUG("after notifying the device, idx field of used is %d\n", vq->used->idx);*/
   
-  struct virtio_block_request readrq[4];
+  struct virtio_block_request readrq[3];
   memset(&readrq, 0, sizeof(readrq));
   memset(&(readrq[2].status), 0, sizeof(readrq[2].status));
   readrq[0].type = 0;
@@ -827,7 +809,7 @@ static int bringup_device(struct virtio_pci_dev *dev)
  
     val = read_regl(dev,DEVICE_FEATURES);
     DEBUG("device features: 0x%0x\n",val);
-    write_regl(dev,GUEST_FEATURES, 0x100);
+    write_regl(dev,GUEST_FEATURES, 0x00000ed4);
     val = read_regl(dev,GUEST_FEATURES);
     DEBUG("guest features set to: 0x%0x\n", val);
 
