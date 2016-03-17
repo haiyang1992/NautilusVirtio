@@ -689,7 +689,7 @@ static int virtio_block_init(struct virtio_pci_dev *dev)
   writerq[0].type = 1;
   writerq[0].priority = 0;
   writerq[0].sector = 0; 
-  memset(&writerq[1].data, 0, 512);
+  memset(&writerq[1].data, 's', 512);
   //memset(&writerq[2].data, 0xff, 512);
   writerq[1].data[0] = 'r'; 
   writerq[1].data[1] = 'a'; 
