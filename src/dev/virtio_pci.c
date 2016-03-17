@@ -408,18 +408,16 @@ static uint32_t allocate_descriptor(volatile struct virtq *vq)
   return -1;
 }
 
-static void read_request_process(volatile struct virtq *vq, uint32_t i, uint32_t head_id, uint32_t *total)
+static void read_request_process(volatile struct virtq *vq, uint32_t i, uint32_t head_id)
 { 
   unsigned char *char_addr = (unsigned char*)(vq->desc[i].addr);
   INFO("Data is at: %x\n", char_addr);
   INFO("Data is: %s\n", char_addr);
   
   if (i == head_id){
-    (*total)++;
-    read_request_process(vq, vq->desc[i].next, head_id, total);
+    read_request_process(vq, vq->desc[i].next, head_id);
   }
   else if(vq->desc[i].next == 0){
-    (*total)++;
     return;
   }
   else{
@@ -429,29 +427,15 @@ static void read_request_process(volatile struct virtq *vq, uint32_t i, uint32_t
       INFO("Data is at: %x\n", (uint64_t)(vq->desc[i].addr));
       INFO("Data is: %c\n", char_addr[0]);*/
     //}
-    (*total)++;
     //nk_dump_mem(char_addr, 512);
-    read_request_process(vq, vq->desc[i].next, head_id, total);
+    read_request_process(vq, vq->desc[i].next, head_id);
   }
 }
 
-// doesn't do anything except counting the numbers of descriptors to free
-static void write_flush_request_process(volatile struct virtq *vq, uint32_t i, uint32_t head_id, uint32_t *total)
-{ 
-  if (i == head_id){
-    (*total)++;
-    write_flush_request_process(vq, vq->desc[i].next, head_id, total);
-  }
-    /*struct virtio_block_request* return_blkrq = (struct virtio_block_request*)vq->desc[i].addr;
-      INFO("Data is: %s\n", return_blkrq->data);*/
-  else if(vq->desc[i].next == 0){
-    (*total)++;
-    return;
-  }
-  else{
-    (*total)++;
-    write_flush_request_process(vq, vq->desc[i].next, head_id, total);
-  }
+// doesn't do anything
+static void write_flush_request_process(volatile struct virtq *vq, uint32_t i, uint32_t head_id)
+{
+  return; 
 }
 
 static int check_status(volatile struct virtq *vq, uint32_t i)
@@ -462,6 +446,7 @@ static int check_status(volatile struct virtq *vq, uint32_t i)
     //uint8_t return_status = return_blkrq->status;
 //    uint8_t return_status = *return_blkrq;
     DEBUG("Status bit of last request packet is %d\n", return_status);
+    DEBUG("Status addr of last request packet is %x\n", vq->desc[i].addr);
     switch(return_status){
       case VIRTIO_BLK_S_OK:
         DEBUG("Block request OK\n");
@@ -503,7 +488,7 @@ static int free_descriptor(volatile struct virtq *vq, uint32_t i)
   }
 }
 
-static int process_descriptor(volatile struct virtq *vq, uint32_t head_id, uint32_t *total)
+static int process_descriptor(volatile struct virtq *vq, uint32_t head_id)
 {
   int blkrq_status = check_status(vq, head_id);
   /*if (blkrq_status){
@@ -518,15 +503,15 @@ static int process_descriptor(volatile struct virtq *vq, uint32_t head_id, uint3
   switch(return_type){
     case 0:
       DEBUG("Processing read request\n");
-      read_request_process(vq, head_id, head_id, total);
+      read_request_process(vq, head_id, head_id);
       break;
     case 1: 
       DEBUG("Processing finished write request\n");
-      write_flush_request_process(vq, head_id, head_id, total);
+      write_flush_request_process(vq, head_id, head_id);
       break;
     default:
       DEBUG("Processing finished flush request\n");
-      write_flush_request_process(vq, head_id, head_id, total);
+      write_flush_request_process(vq, head_id, head_id);
   }
   DEBUG("Freeing descriptors\n");
   return free_descriptor(vq, head_id);
@@ -568,7 +553,7 @@ int virtio_enque_request(struct virtio_pci_dev *dev,
   if (head == 1) vq->avail->ring[vq->avail->idx % vq->num] = i; // we only put the index of the HEAD of the desc chain in avail.ring[]
   __asm__ __volatile__ ("" : : : "memory"); // software memory barrier
   __sync_synchronize(); // hardware memory barrier
-  vq->avail->idx++; // it is ok that this wraps around
+  if (head == 1) vq->avail->idx++; // it is ok that this wraps around
   __asm__ __volatile__ ("" : : : "memory"); // software memory barrier
   __sync_synchronize(); // hardware memory barrier
 
@@ -594,7 +579,7 @@ int virtio_dequeue_responses(struct virtio_pci_dev *dev,
   while (1) { 
 
     
-    for (int i = 0;i<20;i++){DEBUG("used[%d] = %d with length %x\n", i, vq->used->ring[i].id, vq->used->ring[i].len);}
+    for (int i = 0;i<5;i++){DEBUG("used[%d] = %d with length %x\n", i, vq->used->ring[i].id, vq->used->ring[i].len);}
 
     struct virtq_used_elem *e = &(vq->used->ring[(vring->last_seen_used) % vq->num]);
     DEBUG("last seen used = %d\n", vring->last_seen_used);
@@ -622,12 +607,11 @@ int virtio_dequeue_responses(struct virtio_pci_dev *dev,
       DEBUG("Surprising len %x response\n", e->len);
     }*/
 
-    uint32_t total = 0;
     int process_result;
     DEBUG("processing from desc[%d] at used[%d] with length %x\n", e->id, vring->last_seen_used, e->len);
-    process_result = process_descriptor(vq, e->id, &total);
+    process_result = process_descriptor(vq, e->id);
 
-    vring->last_seen_used += total;
+    vring->last_seen_used++;
     //DEBUG("at end: last seen used = %d\n", vring->last_seen_used);
   }
 
@@ -753,7 +737,7 @@ static int virtio_block_init(struct virtio_pci_dev *dev)
   readrq[0].priority = 0;
   readrq[0].sector = 0;
   //readrq[3].status = 5;
-  //memset(&readrq[1].data, 'a', sizeof(readrq[1].data));
+  memset(&readrq[1].data, 'a', sizeof(readrq[1].data));
   //memset(&readrq[2].data, 'b', sizeof(readrq[2].data));
   //readrq[2].status = 5;
 /*  readrq[0].status = 5;
