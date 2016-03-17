@@ -411,8 +411,8 @@ static uint32_t allocate_descriptor(volatile struct virtq *vq)
 static void read_request_process(volatile struct virtq *vq, uint32_t i, uint32_t head_id, uint32_t *total)
 { 
   unsigned char *char_addr = (unsigned char*)(vq->desc[i].addr);
-  INFO("Data is at: %x\n", (uint64_t)(vq->desc[i].addr));
-  INFO("Data is: %s\n", *char_addr);
+  INFO("Data is at: %x\n", char_addr);
+  INFO("Data is: %s\n", char_addr);
   
   if (i == head_id){
     (*total)++;
@@ -681,6 +681,12 @@ static int virtio_block_handler()
   list_for_each(curdev,&(dev_list)) { 
     dev = list_entry(curdev,struct virtio_pci_dev,virtio_node);
   }
+
+  // read ISR status to clear
+  uint32_t isr_status = read_regb(dev, ISR_STATUS);
+  DEBUG("Current ISR status is: %x\n", isr_status);
+  isr_status = read_regb(dev, ISR_STATUS);
+  DEBUG("Current ISR status is: %x\n", isr_status);
   // we assume our virtio-block device is the only one making the interrupt
   blockrq_dequeue(dev);
   DEBUG("Leaving block interrrupt handler\n");
@@ -765,6 +771,8 @@ static int virtio_block_init(struct virtio_pci_dev *dev)
   readrq[0].priority = 0;
   readrq[0].sector = 0;
   //readrq[3].status = 5;
+  //memset(&readrq[1].data, 'a', sizeof(readrq[1].data));
+  //memset(&readrq[2].data, 'b', sizeof(readrq[2].data));
   //readrq[2].status = 5;
 /*  readrq[0].status = 5;
   readrq[1].status = 5;
@@ -781,7 +789,6 @@ static int virtio_block_init(struct virtio_pci_dev *dev)
   udelay(1000000);
   DEBUG("after notifying the device, idx field of used is %d\n", vq->used->idx);
    
-  
   /*write_regw(dev,QUEUE_VEC, 0);
   if( read_regw(dev, QUEUE_VEC) == VIRTIO_MSI_NO_VECTOR){
     DEBUG("Writing Queue Vector failed");
