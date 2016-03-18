@@ -421,13 +421,6 @@ static void read_request_process(volatile struct virtq *vq, uint32_t i, uint32_t
     return;
   }
   else{
-//    struct virti = (struct virtio_block_request*)vq->desc[i].addr;
-    //for (int i=0;i<sizeof(return_blkrq->data);i++){
-    /*unsigned char *char_addr = (uint64_t)(vq->desc[i].addr);
-      INFO("Data is at: %x\n", (uint64_t)(vq->desc[i].addr));
-      INFO("Data is: %c\n", char_addr[0]);*/
-    //}
-    //nk_dump_mem(char_addr, 512);
     read_request_process(vq, vq->desc[i].next, head_id);
   }
 }
@@ -441,10 +434,7 @@ static void write_flush_request_process(volatile struct virtq *vq, uint32_t i, u
 static int check_status(volatile struct virtq *vq, uint32_t i)
 { 
   if (vq->desc[i].next == 0){
-    //struct virtio_block_request* return_blkrq = (struct virtio_block_request*)vq->desc[i].addr;
     uint8_t return_status = *(uint8_t *)(vq->desc[i].addr);
-    //uint8_t return_status = return_blkrq->status;
-//    uint8_t return_status = *return_blkrq;
     DEBUG("Status bit of last request packet is %d\n", return_status);
     DEBUG("Status addr of last request packet is %x\n", vq->desc[i].addr);
     switch(return_status){
@@ -464,8 +454,6 @@ static int check_status(volatile struct virtq *vq, uint32_t i)
     return 0;
   }
   else{
-    struct virtio_block_request* return_blkrq = (struct virtio_block_request*)vq->desc[i].addr;
-    uint8_t return_status = return_blkrq->status;
     return check_status(vq, vq->desc[i].next);
   }
 }
@@ -541,13 +529,11 @@ int virtio_enque_request(struct virtio_pci_dev *dev,
   vq->desc[i].addr=addr;
   vq->desc[i].len=len;
   vq->desc[i].flags=flags;
-  //if (flags != 2 && flags!=0) vq->desc[i].next=i+1;
   if (tail != 1) vq->desc[i].next=i+1;
  
   DEBUG("vq->desc[%d] = (addr %p, len %x, flags %x,next %x)\n", i, vq->desc[i].addr, vq->desc[i].len, vq->desc[i].flags, vq->desc[i].next);
   DEBUG("before: vq->avail->idx = %x mod at %x , vq->num= %x\n", vq->avail->idx, vq->avail->idx % vq->num, vq->num);
 
-  //vq->avail[i].flags = 0;
   vq->avail->flags = 0;
 
   if (head == 1) vq->avail->ring[vq->avail->idx % vq->num] = i; // we only put the index of the HEAD of the desc chain in avail.ring[]
@@ -586,7 +572,6 @@ int virtio_dequeue_responses(struct virtio_pci_dev *dev,
     DEBUG("used idx = %d\n", vq->used->idx);
     
     if (vring->last_seen_used >= vq->used->idx ) {
-      //vq->avail->flags = avail_flags;
 
       __asm__ __volatile__ ("" : : : "memory"); // sw mem barrier
       __sync_synchronize(); // hw mem barrier
@@ -596,23 +581,16 @@ int virtio_dequeue_responses(struct virtio_pci_dev *dev,
 
       // check again
       if (vring->last_seen_used >= vq->used->idx) {
-        //DEBUG("here\n");
 	break;
       }
       vq->avail->flags |= VIRTQ_AVAIL_F_NO_INTERRUPT;
     } 
     
-
-    /*if (e->len!=1) { 
-      DEBUG("Surprising len %x response\n", e->len);
-    }*/
-
     int process_result;
     DEBUG("processing from desc[%d] at used[%d] with length %x\n", e->id, vring->last_seen_used, e->len);
     process_result = process_descriptor(vq, e->id);
 
     vring->last_seen_used++;
-    //DEBUG("at end: last seen used = %d\n", vring->last_seen_used);
   }
 
   return 0;
@@ -668,18 +646,6 @@ static int virtio_block_init(struct virtio_pci_dev *dev)
 
   DEBUG("Block init of %s\n",dev->name);
 
- /* write_regb(dev,DEVICE_STATUS,0x0); // driver resets device
-  write_regb(dev,DEVICE_STATUS,0x01); // driver acknowledges device
-  write_regb(dev,DEVICE_STATUS,0x03); // driver can drive device*/
-
-  /*val = read_regl(dev,DEVICE_FEATURES);
-  DEBUG("device features: 0x%0x\n",val);
-  write_regl(dev,GUEST_FEATURES, 0x100);
-  val = read_regl(dev,GUEST_FEATURES);
-  DEBUG("guest features set to: 0x%0x\n", val);
-
-  write_regb(dev,DEVICE_STATUS, 0b1011);*/
-  
   register_int_handler(228, virtio_block_handler, NULL);
   
   write_regb(dev,DEVICE_STATUS, 0b1111); // driver is now active
@@ -736,14 +702,7 @@ static int virtio_block_init(struct virtio_pci_dev *dev)
   readrq[0].type = 0;
   readrq[0].priority = 0;
   readrq[0].sector = 0;
-  //readrq[3].status = 5;
-//  memset(&readrq[1].data, 'a', sizeof(readrq[1].data));
-  //memset(&readrq[2].data, 'b', sizeof(readrq[2].data));
-  //readrq[2].status = 5;
-/*  readrq[0].status = 5;
   readrq[1].status = 5;
-  readrq[2].status = 5;*/
-  //readrq[3].status = 5;
 
   DEBUG("start idx field of used is now %d\n", vq->used->idx);
   enqueue_result = blockrq_enqueue(dev, readrq, sizeof(readrq)/sizeof(struct virtio_block_request));
