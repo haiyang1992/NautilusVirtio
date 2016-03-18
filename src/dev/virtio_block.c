@@ -38,12 +38,12 @@ int blockrq_enqueue(struct virtio_pci_dev *dev, struct virtio_block_request blkr
     if (i == 0){ 
       head = 1;
       flags = 1;
-      enqueue_status = virtio_enque_request(dev, 0, (uint64_t)&(blkrq[i].type), 128, flags, head, tail);
+      enqueue_status = virtio_enque_request(dev, 0, (uint64_t)&(blkrq[i].type), 16, flags, head, tail);
     }
     else if (i == size - 1){
       flags = 2;
       tail = 1;
-      enqueue_status = virtio_enque_request(dev, 0, (uint64_t)&(blkrq[i].status), 8, flags, head, tail);
+      enqueue_status = virtio_enque_request(dev, 0, (uint64_t)&(blkrq[i].status), 1, flags, head, tail);
     }
     else{
       enqueue_status = virtio_enque_request(dev, 0, (uint64_t)&(blkrq[i].data), 512, flags, head, tail);
